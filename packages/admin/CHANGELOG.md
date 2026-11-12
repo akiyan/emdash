@@ -1,5 +1,21 @@
 # @emdash-cms/admin
 
+## 1.6.0
+
+### Patch Changes
+
+- [#4624](https://github.com/emdash-cms/emdash/pull/4624) [`8c2ec3f`](https://github.com/emdash-cms/emdash/commit/8c2ec3f80405ce7dee7de6f0c8b9f8595d35826c) Thanks [@ferivoq](https://github.com/ferivoq)! - Adds missing Hungarian translations for the admin interface, including the content editor, media library, forms, calendar, and site transfer screens.
+
+- [#4806](https://github.com/emdash-cms/emdash/pull/4806) [`b58be50`](https://github.com/emdash-cms/emdash/commit/b58be5079daf5dc5320064abd1f676aed25869e6) Thanks [@CacheMeOwside](https://github.com/CacheMeOwside)! - Translates Hindi admin, including the forms plugin settings, block field controls, and form validation messages. Hindi now uses transliterated terms for "content", "content type" and "redirect" across the admin.
+
+- [#4785](https://github.com/emdash-cms/emdash/pull/4785) [`d3c66d2`](https://github.com/emdash-cms/emdash/commit/d3c66d28fb65e308b1f7a655dd04e59cbe859fe6) Thanks [@tamersaadeh](https://github.com/tamersaadeh)! - Adds Italian (Italiano) translations for the whole admin interface and makes Italian selectable in the language picker on the sign-in page and in Settings. Browsers that prefer Italian now get the Italian admin automatically, and a site whose language is set to Italian sends its invite, sign-in and recovery emails in Italian. To keep Italian out of the admin, leave `it` out of the `admin.locales` option.
+
+- [#4769](https://github.com/emdash-cms/emdash/pull/4769) [`7ce0d77`](https://github.com/emdash-cms/emdash/commit/7ce0d770c0ace5cfb245a75361848050e4978e55) Thanks [@Yusaku01](https://github.com/Yusaku01)! - Adds missing Japanese translations for block editing, email settings, site status, sidebar customization, content list dates, scheduled publishing notices, and other admin controls.
+
+- [#4788](https://github.com/emdash-cms/emdash/pull/4788) [`4cf36d3`](https://github.com/emdash-cms/emdash/commit/4cf36d3d9673ad180f7b7eb5f8908a65b62630c7) Thanks [@nqt9002](https://github.com/nqt9002)! - Adds a Vietnamese (`vi`) admin translation covering the whole admin catalog, including system emails and the date picker.
+- Updated dependencies []:
+  - @emdash-cms/blocks@1.6.0
+
 <!-- emdash-changelog-archive: ./changelog/0.42.0-to-1.3.0.md -->
 
 ## 1.5.0
