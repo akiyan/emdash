@@ -294,6 +294,132 @@ describe("Editor image drop targets", () => {
 		expect(uploadMedia).not.toHaveBeenCalled();
 	});
 
+	it.each(["featured", "og"] as const)(
+		"selects an image copied from the body editor into %s",
+		async (kind) => {
+			vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+				new ClipboardItem({
+					"text/html": new Blob(
+						[
+							`<img src="" mediaid="${uploaded.id}" provider="local" data-pm-slice="0 0 []"><p></p>`,
+						],
+						{ type: "text/html" },
+					),
+				}),
+			]);
+			const screen = await render(<Target kind={kind} />);
+			await screen.getByRole("button", { name: "Paste", exact: true }).click();
+			await vi.waitFor(() => {
+				const stored = JSON.parse(screen.getByTestId("stored-value").element().textContent!);
+				if (kind === "featured")
+					expect(stored).toMatchObject({ id: uploaded.id, width: 640, height: 480 });
+				else expect(stored).toBe(uploaded.url);
+			});
+			expect(uploadMedia).not.toHaveBeenCalled();
+		},
+	);
+
+	it("applies field restrictions to images copied from the body editor", async () => {
+		vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+			new ClipboardItem({
+				"text/html": new Blob([`<img mediaid="${uploaded.id}" provider="local">`], {
+					type: "text/html",
+				}),
+			}),
+		]);
+		const screen = await render(<Target kind="featured" allowedMimeTypes={["image/jpeg"]} />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect
+			.element(screen.getByRole("alert"))
+			.toHaveTextContent("This field does not accept image/png files.");
+		expect(screen.getByTestId("stored-value").element().textContent).toBe("null");
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		'<img src="https://example.com/picture.png">',
+		'<img mediaid="foreign-image" provider="external">',
+	])("does not resolve unsupported clipboard HTML: %s", async (html) => {
+		vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+			new ClipboardItem({ "text/html": new Blob([html], { type: "text/html" }) }),
+		]);
+		const screen = await render(<Target kind="featured" />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect
+			.element(screen.getByRole("alert"))
+			.toHaveTextContent("No image found in the clipboard.");
+		expect(fetchMediaItem).not.toHaveBeenCalled();
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
+	it("rejects multiple copied body images", async () => {
+		vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+			new ClipboardItem({
+				"text/html": new Blob(
+					['<img mediaid="one" provider="local"><img mediaid="two" provider="local">'],
+					{ type: "text/html" },
+				),
+			}),
+		]);
+		const screen = await render(<Target kind="featured" />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect
+			.element(screen.getByRole("alert"))
+			.toHaveTextContent("Upload one image at a time.");
+		expect(fetchMediaItem).not.toHaveBeenCalled();
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
+	it("allows retry when a copied media reference cannot be loaded", async () => {
+		vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+			new ClipboardItem({
+				"text/html": new Blob([`<img mediaid="${uploaded.id}" provider="local">`], {
+					type: "text/html",
+				}),
+			}),
+		]);
+		vi.mocked(fetchMediaItem).mockRejectedValueOnce(new Error("Not found"));
+		const screen = await render(<Target kind="featured" />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect
+			.element(screen.getByRole("alert"))
+			.toHaveTextContent("Could not load the copied image.");
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await vi.waitFor(() =>
+			expect(JSON.parse(screen.getByTestId("stored-value").element().textContent!)).toMatchObject({
+				id: uploaded.id,
+			}),
+		);
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
+	it("aborts a copied media lookup when the field unmounts", async () => {
+		vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+			new ClipboardItem({
+				"text/html": new Blob([`<img mediaid="${uploaded.id}" provider="local">`], {
+					type: "text/html",
+				}),
+			}),
+		]);
+		let finish!: (item: LocalMediaItem) => void;
+		vi.mocked(fetchMediaItem).mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const onSaved = vi.fn();
+		const screen = await render(<Target kind="featured" onSaved={onSaved} />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await vi.waitFor(() => expect(fetchMediaItem).toHaveBeenCalledOnce());
+		const signal = vi.mocked(fetchMediaItem).mock.calls[0]?.[1]?.signal;
+		await screen.unmount();
+		expect(signal?.aborted).toBe(true);
+		await React.act(async () => finish(uploaded));
+		expect(onSaved).not.toHaveBeenCalled();
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
 	it("explains when the clipboard contains no image", async () => {
 		vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
 			new ClipboardItem({ "text/plain": new Blob(["A title"], { type: "text/plain" }) }),

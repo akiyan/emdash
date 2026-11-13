@@ -4,7 +4,7 @@ import { Clipboard, Image as ImageIcon, UploadSimple } from "@phosphor-icons/rea
 import { useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
-import { uploadMedia, type MediaItem } from "../../lib/api/media.js";
+import { fetchMediaItem, uploadMedia, type MediaItem } from "../../lib/api/media.js";
 import { matchesMimeAllowlist } from "../../lib/mime-utils.js";
 import { cn } from "../../lib/utils.js";
 import { getMutationError } from "../DialogError.js";
@@ -38,19 +38,33 @@ export function ImageDropTarget({
 	const [dragActive, setDragActive] = React.useState(false);
 	const [uploading, setUploading] = React.useState(false);
 	const [readingClipboard, setReadingClipboard] = React.useState(false);
-	const clipboardRead = React.useRef<symbol | null>(null);
+	const clipboardRead = React.useRef<AbortController | null>(null);
 	const [error, setError] = React.useState<string | null>(null);
 	const activeUpload = React.useRef<AbortController | null>(null);
 	const dragDepth = React.useRef(0);
 
 	React.useEffect(
 		() => () => {
+			clipboardRead.current?.abort();
 			clipboardRead.current = null;
 			activeUpload.current?.abort();
 			activeUpload.current = null;
 		},
 		[],
 	);
+
+	const validateImageType = (mimeType: string) => {
+		if (!matchesMimeAllowlist(mimeType, ["image/"])) {
+			setError(t`Only image files can be uploaded here.`);
+			return false;
+		}
+		if (allowedMimeTypes?.length && !matchesMimeAllowlist(mimeType, allowedMimeTypes)) {
+			setError(t`This field does not accept ${mimeType} files.`);
+			return false;
+		}
+
+		return true;
+	};
 
 	const upload = async (files: File[]) => {
 		if (activeUpload.current || clipboardRead.current) return;
@@ -59,14 +73,7 @@ export function ImageDropTarget({
 			return;
 		}
 		const file = files[0]!;
-		if (!matchesMimeAllowlist(file.type, ["image/"])) {
-			setError(t`Only image files can be uploaded here.`);
-			return;
-		}
-		if (allowedMimeTypes?.length && !matchesMimeAllowlist(file.type, allowedMimeTypes)) {
-			setError(t`This field does not accept ${file.type} files.`);
-			return;
-		}
+		if (!validateImageType(file.type)) return;
 
 		const controller = new AbortController();
 		activeUpload.current = controller;
@@ -100,7 +107,8 @@ export function ImageDropTarget({
 			setError(t`Clipboard access is unavailable. Choose an image or drag one here.`);
 			return;
 		}
-		const read = Symbol();
+		const read = new AbortController();
+		let resolvingImage = false;
 		clipboardRead.current = read;
 		setReadingClipboard(true);
 		setError(null);
@@ -120,9 +128,35 @@ export function ImageDropTarget({
 					];
 				}),
 			);
+			let copiedImage: MediaItem | undefined;
+			if (files.length === 0) {
+				const html = await Promise.all(
+					items
+						.filter((item) => item.types.includes("text/html"))
+						.map(async (item) => (await item.getType("text/html")).text()),
+				);
+				if (clipboardRead.current !== read) return;
+				const images = html.flatMap((value) => [
+					...new DOMParser().parseFromString(value, "text/html").images,
+				]);
+				if (images.length > 1) {
+					setError(t`Upload one image at a time.`);
+					return;
+				}
+				const image = images[0];
+				const mediaId = image?.getAttribute("mediaid");
+				if (mediaId && image?.getAttribute("provider") === "local") {
+					resolvingImage = true;
+					copiedImage = await fetchMediaItem(mediaId, { signal: read.signal });
+				}
+			}
 			if (clipboardRead.current !== read) return;
 			clipboardRead.current = null;
 			setReadingClipboard(false);
+			if (copiedImage) {
+				if (validateImageType(copiedImage.mimeType)) onUploaded(copiedImage);
+				return;
+			}
 			if (files.length === 0) {
 				setError(t`No image found in the clipboard. Copy an image and try again.`);
 				return;
@@ -131,7 +165,9 @@ export function ImageDropTarget({
 		} catch {
 			if (clipboardRead.current === read) {
 				setError(
-					t`Could not read the clipboard. Check this site's clipboard permission, or choose an image.`,
+					resolvingImage
+						? t`Could not load the copied image. Choose an image from the media library.`
+						: t`Could not read the clipboard. Check this site's clipboard permission, or choose an image.`,
 				);
 			}
 		} finally {
