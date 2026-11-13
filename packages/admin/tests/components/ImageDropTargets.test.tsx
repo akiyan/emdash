@@ -98,15 +98,6 @@ function dropFiles(element: Element, files: File[]) {
 	}
 }
 
-function pasteFiles(element: Element, files: File[], text?: string) {
-	const clipboardData = new DataTransfer();
-	for (const file of files) clipboardData.items.add(file);
-	if (text) clipboardData.setData("text/plain", text);
-	const event = new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true });
-	element.dispatchEvent(event);
-	return event;
-}
-
 function imageFile() {
 	return new File(["image bytes"], "upload.png", { type: "image/png" });
 }
@@ -165,8 +156,6 @@ describe("Editor image drop targets", () => {
 	it.each([
 		{ kind: "featured", sendFiles: dropFiles },
 		{ kind: "og", sendFiles: dropFiles },
-		{ kind: "featured", sendFiles: pasteFiles },
-		{ kind: "og", sendFiles: pasteFiles },
 	] as const)(
 		"uploads one file into $kind with $sendFiles.name and ignores another upload while busy",
 		async ({ kind, sendFiles }) => {
@@ -265,61 +254,6 @@ describe("Editor image drop targets", () => {
 		expect(screen.getByTestId("stored-value").element().textContent).toBe("null");
 	});
 
-	it.each([
-		{
-			files: [imageFile(), imageFile()],
-			allowed: undefined,
-			message: "Upload one image at a time.",
-		},
-		{
-			files: [imageFile()],
-			allowed: ["image/jpeg"],
-			message: "This field does not accept image/png files.",
-		},
-	])("rejects incompatible pastes: $message", async ({ files, allowed, message }) => {
-		const screen = await render(<Target kind="featured" allowedMimeTypes={allowed} />);
-		const button = screen.getByRole("button", {
-			name: "Choose image for Featured image",
-			exact: true,
-		});
-		expect(pasteFiles(button.element(), files).defaultPrevented).toBe(true);
-		await expect.element(screen.getByRole("alert")).toHaveTextContent(message);
-		expect(uploadMedia).not.toHaveBeenCalled();
-	});
-
-	it("leaves text and non-image clipboard contents alone", async () => {
-		const screen = await render(<Target kind="featured" />);
-		const button = screen.getByRole("button", {
-			name: "Choose image for Featured image",
-			exact: true,
-		});
-		button.element().focus();
-		expect(pasteFiles(document.activeElement!, [], "A title").defaultPrevented).toBe(false);
-		expect(
-			pasteFiles(button.element(), [new File(["text"], "note.txt", { type: "text/plain" })])
-				.defaultPrevented,
-		).toBe(false);
-		expect(uploadMedia).not.toHaveBeenCalled();
-		expect(screen.getByRole("alert").query()).toBeNull();
-	});
-
-	it("keeps pasted images out of ancestor paste handlers", async () => {
-		const onPaste = vi.fn();
-		const screen = await render(
-			<div onPaste={onPaste}>
-				<Target kind="featured" />
-			</div>,
-		);
-		const button = screen.getByRole("button", {
-			name: "Choose image for Featured image",
-			exact: true,
-		});
-		button.element().focus();
-		expect(pasteFiles(document.activeElement!, [imageFile()]).defaultPrevented).toBe(true);
-		await vi.waitFor(() => expect(uploadMedia).toHaveBeenCalledOnce());
-		expect(onPaste).not.toHaveBeenCalled();
-	});
-
 	it.each(["featured", "og"] as const)(
 		"pastes a clipboard image using the %s button",
 		async (kind) => {
@@ -343,6 +277,22 @@ describe("Editor image drop targets", () => {
 			});
 		},
 	);
+
+	it.each([
+		{ count: 2, allowed: undefined, message: "Upload one image at a time." },
+		{ count: 1, allowed: ["image/jpeg"], message: "This field does not accept image/png files." },
+	])("validates clipboard button uploads: $message", async ({ count, allowed, message }) => {
+		vi.spyOn(navigator.clipboard, "read").mockResolvedValue(
+			Array.from(
+				{ length: count },
+				() => new ClipboardItem({ "image/png": new Blob(["pixels"], { type: "image/png" }) }),
+			),
+		);
+		const screen = await render(<Target kind="featured" allowedMimeTypes={allowed} />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect.element(screen.getByRole("alert")).toHaveTextContent(message);
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
 
 	it("explains when the clipboard contains no image", async () => {
 		vi.spyOn(navigator.clipboard, "read").mockResolvedValue([

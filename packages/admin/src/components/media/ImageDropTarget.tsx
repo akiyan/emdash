@@ -34,7 +34,6 @@ export function ImageDropTarget({
 	buttonProps,
 }: ImageDropTargetProps) {
 	const { t } = useLingui();
-	const pasteHintId = React.useId();
 	const queryClient = useQueryClient();
 	const [dragActive, setDragActive] = React.useState(false);
 	const [uploading, setUploading] = React.useState(false);
@@ -98,9 +97,7 @@ export function ImageDropTarget({
 	const pasteFromClipboard = async () => {
 		if (activeUpload.current || clipboardRead.current) return;
 		if (!navigator.clipboard?.read) {
-			setError(
-				t`Clipboard access is unavailable. Focus this field and use your keyboard's paste shortcut.`,
-			);
+			setError(t`Clipboard access is unavailable. Choose an image or drag one here.`);
 			return;
 		}
 		const read = Symbol();
@@ -134,7 +131,7 @@ export function ImageDropTarget({
 		} catch {
 			if (clipboardRead.current === read) {
 				setError(
-					t`Could not read the clipboard. Allow clipboard access, or focus this field and use your keyboard's paste shortcut.`,
+					t`Could not read the clipboard. Check this site's clipboard permission, or choose an image.`,
 				);
 			}
 		} finally {
@@ -155,13 +152,6 @@ export function ImageDropTarget({
 					dragActive && "border-kumo-brand bg-kumo-tint",
 				)}
 				aria-busy={busy}
-				onPaste={(event) => {
-					const files = [...event.clipboardData.files];
-					if (!files.some((file) => file.type.startsWith("image/"))) return;
-					event.preventDefault();
-					event.stopPropagation();
-					void upload(files);
-				}}
 				onDragEnter={(event) => {
 					if (!event.dataTransfer.types.includes("Files") || activeUpload.current) return;
 					event.preventDefault();
@@ -209,9 +199,6 @@ export function ImageDropTarget({
 						aria-label={t`Choose image for ${label}`}
 						disabled={busy}
 						{...buttonProps}
-						aria-describedby={[buttonProps?.["aria-describedby"], pasteHintId]
-							.filter(Boolean)
-							.join(" ")}
 						onClick={() => {
 							setError(null);
 							onSelect();
@@ -225,16 +212,12 @@ export function ImageDropTarget({
 						size="sm"
 						icon={<Clipboard aria-hidden="true" />}
 						disabled={busy}
-						aria-describedby={pasteHintId}
 						onClick={() => void pasteFromClipboard()}
 					>
 						<Trans>Paste</Trans>
 					</Button>
 				</div>
 			</div>
-			<p id={pasteHintId} className="text-xs leading-4 text-kumo-subtle">
-				<Trans>Or focus this field and use your keyboard’s paste shortcut.</Trans>
-			</p>
 			<span role="status" className="sr-only">
 				{uploading ? t`Uploading image…` : readingClipboard ? t`Reading clipboard…` : ""}
 			</span>
