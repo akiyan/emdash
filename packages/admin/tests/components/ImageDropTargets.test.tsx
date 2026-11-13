@@ -116,13 +116,16 @@ describe("Editor image drop targets", () => {
 		async (kind) => {
 			const screen = await render(<Target kind={kind} />);
 			const button = screen.getByRole("button", {
-				name: kind === "featured" ? "Choose image for Featured image" : "Choose image for OG Image",
+				name:
+					kind === "featured"
+						? "Drop an image here or browse for Featured image"
+						: "Drop an image here or browse for OG Image",
 				exact: true,
 			});
-			expect(getComputedStyle(button.element().parentElement!.parentElement!).borderTopStyle).toBe(
+			expect(getComputedStyle(button.element().closest("[aria-busy]")!).borderTopStyle).toBe(
 				"dashed",
 			);
-			await expect.element(screen.getByText("Drop an image here", { exact: true })).toBeVisible();
+			await expect.element(button).toHaveTextContent("browse");
 			await expect
 				.element(screen.getByRole("button", { name: "Paste", exact: true }))
 				.toBeVisible();
@@ -140,8 +143,9 @@ describe("Editor image drop targets", () => {
 			</>,
 		);
 		const target = screen
-			.getByRole("button", { name: "Choose image for Featured image", exact: true })
-			.element().parentElement!.parentElement!;
+			.getByRole("button", { name: "Drop an image here or browse for Featured image", exact: true })
+			.element()
+			.closest("[aria-busy]")!;
 		const brand = getComputedStyle(screen.getByTestId("brand-color").element()).color;
 
 		const dataTransfer = new DataTransfer();
@@ -168,7 +172,10 @@ describe("Editor image drop targets", () => {
 			);
 			const screen = await render(<Target kind={kind} />);
 			const button = screen.getByRole("button", {
-				name: kind === "featured" ? "Choose image for Featured image" : "Choose image for OG Image",
+				name:
+					kind === "featured"
+						? "Drop an image here or browse for Featured image"
+						: "Drop an image here or browse for OG Image",
 				exact: true,
 			});
 			sendFiles(button.element(), [imageFile()]);
@@ -208,7 +215,10 @@ describe("Editor image drop targets", () => {
 			vi.mocked(uploadMedia).mockImplementation(() => new Promise(() => {}));
 			const screen = await render(<Target kind={kind} />);
 			const button = screen.getByRole("button", {
-				name: kind === "featured" ? "Choose image for Featured image" : "Choose image for OG Image",
+				name:
+					kind === "featured"
+						? "Drop an image here or browse for Featured image"
+						: "Drop an image here or browse for OG Image",
 				exact: true,
 			});
 
@@ -243,7 +253,7 @@ describe("Editor image drop targets", () => {
 		dropFiles(
 			screen
 				.getByRole("button", {
-					name: "Choose image for Featured image",
+					name: "Drop an image here or browse for Featured image",
 					exact: true,
 				})
 				.element(),
@@ -472,7 +482,7 @@ describe("Editor image drop targets", () => {
 		vi.mocked(uploadMedia).mockRejectedValueOnce(new Error("Storage is unavailable"));
 		const screen = await render(<Target kind="og" />);
 		const button = screen.getByRole("button", {
-			name: "Choose image for OG Image",
+			name: "Drop an image here or browse for OG Image",
 			exact: true,
 		});
 		dropFiles(button.element(), [imageFile()]);
@@ -497,7 +507,9 @@ describe("Editor image drop targets", () => {
 		const onSaved = vi.fn();
 		const screen = await render(<Target kind="og" onSaved={onSaved} />);
 		dropFiles(
-			screen.getByRole("button", { name: "Choose image for OG Image", exact: true }).element(),
+			screen
+				.getByRole("button", { name: "Drop an image here or browse for OG Image", exact: true })
+				.element(),
 			[imageFile()],
 		);
 		await vi.waitFor(() => expect(uploadMedia).toHaveBeenCalledOnce());

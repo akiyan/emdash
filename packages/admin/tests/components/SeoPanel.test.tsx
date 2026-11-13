@@ -41,7 +41,7 @@ describe("SeoPanel", () => {
 		);
 
 		screen.getByText("OG Image");
-		screen.getByRole("button", { name: "Choose image for OG Image" });
+		screen.getByRole("button", { name: "Drop an image here or browse for OG Image" });
 	});
 
 	it("associates visible SEO labels with their fields", async () => {

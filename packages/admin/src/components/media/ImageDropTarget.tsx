@@ -1,6 +1,6 @@
 import { Button, Loader } from "@cloudflare/kumo";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { Clipboard, Image as ImageIcon, UploadSimple } from "@phosphor-icons/react";
+import { UploadSimple } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
@@ -184,8 +184,9 @@ export function ImageDropTarget({
 		<div className={cn("grid gap-2", className)}>
 			<div
 				className={cn(
-					"flex min-h-40 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-kumo-line bg-kumo-control px-4 py-5",
+					"rounded-xl border-2 border-dashed border-kumo-line bg-kumo-control",
 					dragActive && "border-kumo-brand bg-kumo-tint",
+					!busy && "hover:bg-kumo-tint",
 				)}
 				aria-busy={busy}
 				onDragEnter={(event) => {
@@ -212,46 +213,45 @@ export function ImageDropTarget({
 						void upload([...event.dataTransfer.files]);
 				}}
 			>
-				{busy ? (
-					<span aria-hidden="true">
-						<Loader size="sm" />
-					</span>
-				) : (
-					<UploadSimple className="h-8 w-8 text-kumo-subtle" aria-hidden="true" />
-				)}
-				<span className="text-sm text-kumo-subtle">
-					{uploading
-						? t`Uploading image…`
-						: readingClipboard
-							? t`Reading clipboard…`
-							: t`Drop an image here`}
-				</span>
-				<div className="flex flex-wrap items-center justify-center gap-2">
-					<Button
-						type="button"
-						variant="secondary"
-						size="sm"
-						icon={<ImageIcon aria-hidden="true" />}
-						aria-label={t`Choose image for ${label}`}
-						disabled={busy}
-						{...buttonProps}
-						onClick={() => {
-							setError(null);
-							onSelect();
-						}}
-					>
-						<Trans>Choose image</Trans>
-					</Button>
-					<Button
-						type="button"
-						variant="secondary"
-						size="sm"
-						icon={<Clipboard aria-hidden="true" />}
-						disabled={busy}
-						onClick={() => void pasteFromClipboard()}
-					>
-						<Trans>Paste</Trans>
-					</Button>
+				<div className="flex min-h-32 flex-col items-center justify-center gap-3 px-4 py-5 text-center text-base text-kumo-subtle">
+					{busy ? (
+						<span aria-hidden="true" className="flex shrink-0">
+							<Loader size="sm" />
+						</span>
+					) : (
+						<UploadSimple className="h-8 w-8 shrink-0" aria-hidden="true" />
+					)}
+					<div className="flex flex-wrap items-center justify-center gap-y-2">
+						<Trans>
+							Drop an image here or{" "}
+							<Button
+								type="button"
+								variant="ghost"
+								disabled={busy}
+								className="h-auto min-h-0 p-0 text-base font-medium text-kumo-default underline decoration-kumo-line decoration-2 underline-offset-4 hover:bg-transparent"
+								aria-label={t`Drop an image here or browse for ${label}`}
+								{...buttonProps}
+								onClick={() => {
+									setError(null);
+									onSelect();
+								}}
+							>
+								browse
+							</Button>
+						</Trans>
+						<span className="mx-1.5">
+							<Trans>or</Trans>
+						</span>
+						<Button
+							type="button"
+							variant="ghost"
+							disabled={busy}
+							className="h-auto min-h-0 p-0 text-base font-medium text-kumo-default underline decoration-kumo-line decoration-2 underline-offset-4 hover:bg-transparent"
+							onClick={() => void pasteFromClipboard()}
+						>
+							<Trans>Paste</Trans>
+						</Button>
+					</div>
 				</div>
 			</div>
 			<span role="status" className="sr-only">

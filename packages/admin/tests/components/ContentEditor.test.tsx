@@ -2933,7 +2933,7 @@ describe("ContentEditor", () => {
 			});
 
 			const initialImagePicker = screen
-				.getByRole("button", { name: /Choose image for Featured image/i })
+				.getByRole("button", { name: /Drop an image here or browse for Featured image/i })
 				.element();
 			const initialCanvasWidth = screen
 				.getByTestId("portable-text-editor")
@@ -2943,7 +2943,7 @@ describe("ContentEditor", () => {
 			await screen.getByRole("button", { name: "Enter distraction-free mode" }).click();
 
 			const imagePicker = screen
-				.getByRole("button", { name: /Choose image for Featured image/i })
+				.getByRole("button", { name: /Drop an image here or browse for Featured image/i })
 				.element();
 			const portableTextEditor = screen.getByTestId("portable-text-editor").element();
 			const editorCanvas = portableTextEditor.closest(".mx-auto");

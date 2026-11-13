@@ -17558,3 +17558,9 @@ msgstr "YouTube"
 #: packages/admin/src/components/editor/codeBlockLanguages.ts:61
 msgid "Zig"
 msgstr "Zig"
+
+msgid "or"
+msgstr "または"
+
+msgid "Paste"
+msgstr "貼り付け"
