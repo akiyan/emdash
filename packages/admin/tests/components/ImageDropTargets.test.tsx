@@ -1,5 +1,5 @@
 import * as React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
 import "../../dist/styles.css";
@@ -111,6 +111,8 @@ function imageFile() {
 	return new File(["image bytes"], "upload.png", { type: "image/png" });
 }
 
+afterEach(() => vi.restoreAllMocks());
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	vi.mocked(fetchMediaItem).mockResolvedValue(uploaded);
@@ -123,20 +125,16 @@ describe("Editor image drop targets", () => {
 		async (kind) => {
 			const screen = await render(<Target kind={kind} />);
 			const button = screen.getByRole("button", {
-				name:
-					kind === "featured"
-						? "Drop an image here or browse for Featured image"
-						: "Drop an image here or browse for OG Image",
+				name: kind === "featured" ? "Choose image for Featured image" : "Choose image for OG Image",
 				exact: true,
 			});
-			expect(getComputedStyle(button.element().parentElement!).borderTopStyle).toBe("dashed");
-			const buttonBounds = button.element().getBoundingClientRect();
-			const iconBounds = button.element().querySelector("svg")!.getBoundingClientRect();
-			const hint = screen.getByText("Drop an image here or browse", { exact: true }).element();
-			expect(iconBounds.top - buttonBounds.top).toBeCloseTo(
-				buttonBounds.bottom - hint.getBoundingClientRect().bottom,
-				0,
+			expect(getComputedStyle(button.element().parentElement!.parentElement!).borderTopStyle).toBe(
+				"dashed",
 			);
+			await expect.element(screen.getByText("Drop an image here", { exact: true })).toBeVisible();
+			await expect
+				.element(screen.getByRole("button", { name: "Paste", exact: true }))
+				.toBeVisible();
 			button.element().focus();
 			await userEvent.keyboard("{Enter}");
 			await expect.element(screen.getByRole("dialog", { name: "Media picker" })).toBeVisible();
@@ -151,8 +149,8 @@ describe("Editor image drop targets", () => {
 			</>,
 		);
 		const target = screen
-			.getByRole("button", { name: "Drop an image here or browse for Featured image", exact: true })
-			.element().parentElement!;
+			.getByRole("button", { name: "Choose image for Featured image", exact: true })
+			.element().parentElement!.parentElement!;
 		const brand = getComputedStyle(screen.getByTestId("brand-color").element()).color;
 
 		const dataTransfer = new DataTransfer();
@@ -181,10 +179,7 @@ describe("Editor image drop targets", () => {
 			);
 			const screen = await render(<Target kind={kind} />);
 			const button = screen.getByRole("button", {
-				name:
-					kind === "featured"
-						? "Drop an image here or browse for Featured image"
-						: "Drop an image here or browse for OG Image",
+				name: kind === "featured" ? "Choose image for Featured image" : "Choose image for OG Image",
 				exact: true,
 			});
 			sendFiles(button.element(), [imageFile()]);
@@ -224,10 +219,7 @@ describe("Editor image drop targets", () => {
 			vi.mocked(uploadMedia).mockImplementation(() => new Promise(() => {}));
 			const screen = await render(<Target kind={kind} />);
 			const button = screen.getByRole("button", {
-				name:
-					kind === "featured"
-						? "Drop an image here or browse for Featured image"
-						: "Drop an image here or browse for OG Image",
+				name: kind === "featured" ? "Choose image for Featured image" : "Choose image for OG Image",
 				exact: true,
 			});
 
@@ -262,7 +254,7 @@ describe("Editor image drop targets", () => {
 		dropFiles(
 			screen
 				.getByRole("button", {
-					name: "Drop an image here or browse for Featured image",
+					name: "Choose image for Featured image",
 					exact: true,
 				})
 				.element(),
@@ -287,7 +279,7 @@ describe("Editor image drop targets", () => {
 	])("rejects incompatible pastes: $message", async ({ files, allowed, message }) => {
 		const screen = await render(<Target kind="featured" allowedMimeTypes={allowed} />);
 		const button = screen.getByRole("button", {
-			name: "Drop an image here or browse for Featured image",
+			name: "Choose image for Featured image",
 			exact: true,
 		});
 		expect(pasteFiles(button.element(), files).defaultPrevented).toBe(true);
@@ -298,7 +290,7 @@ describe("Editor image drop targets", () => {
 	it("leaves text and non-image clipboard contents alone", async () => {
 		const screen = await render(<Target kind="featured" />);
 		const button = screen.getByRole("button", {
-			name: "Drop an image here or browse for Featured image",
+			name: "Choose image for Featured image",
 			exact: true,
 		});
 		button.element().focus();
@@ -319,7 +311,7 @@ describe("Editor image drop targets", () => {
 			</div>,
 		);
 		const button = screen.getByRole("button", {
-			name: "Drop an image here or browse for Featured image",
+			name: "Choose image for Featured image",
 			exact: true,
 		});
 		button.element().focus();
@@ -328,11 +320,83 @@ describe("Editor image drop targets", () => {
 		expect(onPaste).not.toHaveBeenCalled();
 	});
 
+	it.each(["featured", "og"] as const)(
+		"pastes a clipboard image using the %s button",
+		async (kind) => {
+			const read = vi
+				.spyOn(navigator.clipboard, "read")
+				.mockResolvedValue([
+					new ClipboardItem({ "image/png": new Blob(["pixels"], { type: "image/png" }) }),
+				]);
+			const screen = await render(<Target kind={kind} />);
+			await screen.getByRole("button", { name: "Paste", exact: true }).click();
+			await vi.waitFor(() => {
+				const stored = JSON.parse(screen.getByTestId("stored-value").element().textContent!);
+				if (kind === "featured")
+					expect(stored).toMatchObject({ id: uploaded.id, width: 640, height: 480 });
+				else expect(stored).toBe(uploaded.url);
+			});
+			expect(read).toHaveBeenCalledOnce();
+			expect(vi.mocked(uploadMedia).mock.calls[0]?.[0]).toMatchObject({
+				name: "clipboard-image.png",
+				type: "image/png",
+			});
+		},
+	);
+
+	it("explains when the clipboard contains no image", async () => {
+		vi.spyOn(navigator.clipboard, "read").mockResolvedValue([
+			new ClipboardItem({ "text/plain": new Blob(["A title"], { type: "text/plain" }) }),
+		]);
+		const screen = await render(<Target kind="featured" />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect
+			.element(screen.getByRole("alert"))
+			.toHaveTextContent("No image found in the clipboard.");
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
+	it("allows retry after clipboard permission is denied", async () => {
+		const read = vi
+			.spyOn(navigator.clipboard, "read")
+			.mockRejectedValueOnce(new DOMException("Denied", "NotAllowedError"))
+			.mockResolvedValue([]);
+		const screen = await render(<Target kind="featured" />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect
+			.element(screen.getByRole("alert"))
+			.toHaveTextContent("Could not read the clipboard.");
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect
+			.element(screen.getByRole("alert"))
+			.toHaveTextContent("No image found in the clipboard.");
+		expect(read).toHaveBeenCalledTimes(2);
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
+	it("ignores a clipboard read that finishes after unmount", async () => {
+		let finish!: (items: ClipboardItem[]) => void;
+		vi.spyOn(navigator.clipboard, "read").mockImplementation(
+			() =>
+				new Promise((resolve) => {
+					finish = resolve;
+				}),
+		);
+		const screen = await render(<Target kind="featured" />);
+		await screen.getByRole("button", { name: "Paste", exact: true }).click();
+		await expect.element(screen.getByRole("button", { name: "Paste", exact: true })).toBeDisabled();
+		await screen.unmount();
+		await React.act(async () =>
+			finish([new ClipboardItem({ "image/png": new Blob(["pixels"], { type: "image/png" }) })]),
+		);
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
 	it("keeps the empty target usable after an upload fails", async () => {
 		vi.mocked(uploadMedia).mockRejectedValueOnce(new Error("Storage is unavailable"));
 		const screen = await render(<Target kind="og" />);
 		const button = screen.getByRole("button", {
-			name: "Drop an image here or browse for OG Image",
+			name: "Choose image for OG Image",
 			exact: true,
 		});
 		dropFiles(button.element(), [imageFile()]);
@@ -357,9 +421,7 @@ describe("Editor image drop targets", () => {
 		const onSaved = vi.fn();
 		const screen = await render(<Target kind="og" onSaved={onSaved} />);
 		dropFiles(
-			screen
-				.getByRole("button", { name: "Drop an image here or browse for OG Image", exact: true })
-				.element(),
+			screen.getByRole("button", { name: "Choose image for OG Image", exact: true }).element(),
 			[imageFile()],
 		);
 		await vi.waitFor(() => expect(uploadMedia).toHaveBeenCalledOnce());

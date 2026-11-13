@@ -1,6 +1,6 @@
 import { Button, Loader } from "@cloudflare/kumo";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { UploadSimple } from "@phosphor-icons/react";
+import { Clipboard, Image as ImageIcon, UploadSimple } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
@@ -38,12 +38,15 @@ export function ImageDropTarget({
 	const queryClient = useQueryClient();
 	const [dragActive, setDragActive] = React.useState(false);
 	const [uploading, setUploading] = React.useState(false);
+	const [readingClipboard, setReadingClipboard] = React.useState(false);
+	const clipboardRead = React.useRef<symbol | null>(null);
 	const [error, setError] = React.useState<string | null>(null);
 	const activeUpload = React.useRef<AbortController | null>(null);
 	const dragDepth = React.useRef(0);
 
 	React.useEffect(
 		() => () => {
+			clipboardRead.current = null;
 			activeUpload.current?.abort();
 			activeUpload.current = null;
 		},
@@ -51,7 +54,7 @@ export function ImageDropTarget({
 	);
 
 	const upload = async (files: File[]) => {
-		if (activeUpload.current) return;
+		if (activeUpload.current || clipboardRead.current) return;
 		if (files.length !== 1) {
 			setError(t`Upload one image at a time.`);
 			return;
@@ -92,14 +95,66 @@ export function ImageDropTarget({
 		}
 	};
 
+	const pasteFromClipboard = async () => {
+		if (activeUpload.current || clipboardRead.current) return;
+		if (!navigator.clipboard?.read) {
+			setError(
+				t`Clipboard access is unavailable. Focus this field and use your keyboard's paste shortcut.`,
+			);
+			return;
+		}
+		const read = Symbol();
+		clipboardRead.current = read;
+		setReadingClipboard(true);
+		setError(null);
+		try {
+			const items = await navigator.clipboard.read();
+			const files = await Promise.all(
+				items.flatMap((item) => {
+					const type = item.types.find((candidate) => candidate.startsWith("image/"));
+					if (!type) return [];
+					return [
+						item.getType(type).then(
+							(blob) =>
+								new File([blob], `clipboard-image.${type.split("/")[1]!.replace("+xml", "")}`, {
+									type,
+								}),
+						),
+					];
+				}),
+			);
+			if (clipboardRead.current !== read) return;
+			clipboardRead.current = null;
+			setReadingClipboard(false);
+			if (files.length === 0) {
+				setError(t`No image found in the clipboard. Copy an image and try again.`);
+				return;
+			}
+			await upload(files);
+		} catch {
+			if (clipboardRead.current === read) {
+				setError(
+					t`Could not read the clipboard. Allow clipboard access, or focus this field and use your keyboard's paste shortcut.`,
+				);
+			}
+		} finally {
+			if (clipboardRead.current === read) {
+				clipboardRead.current = null;
+				setReadingClipboard(false);
+			}
+		}
+	};
+
+	const busy = uploading || readingClipboard;
+
 	return (
 		<div className={cn("grid gap-2", className)}>
 			<div
 				className={cn(
-					"rounded-xl border-2 border-dashed border-kumo-line bg-kumo-control",
+					"flex min-h-40 flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-kumo-line bg-kumo-control px-4 py-5",
 					dragActive && "border-kumo-brand bg-kumo-tint",
 				)}
-				aria-busy={uploading}
+				aria-busy={busy}
 				onPaste={(event) => {
 					const files = [...event.clipboardData.files];
 					if (!files.some((file) => file.type.startsWith("image/"))) return;
@@ -131,47 +186,57 @@ export function ImageDropTarget({
 						void upload([...event.dataTransfer.files]);
 				}}
 			>
-				<Button
-					type="button"
-					variant="ghost"
-					className="h-auto min-h-32 w-full flex-col items-center justify-center gap-3 rounded-[10px] px-4 py-5 text-center text-base text-kumo-subtle"
-					aria-label={t`Drop an image here or browse for ${label}`}
-					disabled={uploading}
-					{...buttonProps}
-					aria-describedby={[buttonProps?.["aria-describedby"], pasteHintId]
-						.filter(Boolean)
-						.join(" ")}
-					onClick={() => {
-						setError(null);
-						onSelect();
-					}}
-				>
-					{uploading ? (
-						<span aria-hidden="true" className="flex shrink-0">
-							<Loader size="sm" />
-						</span>
-					) : (
-						<UploadSimple className="h-8 w-8 shrink-0" aria-hidden="true" />
-					)}
-					<span className="font-normal">
-						{uploading ? (
-							t`Uploading image…`
-						) : (
-							<Trans>
-								Drop an image here or{" "}
-								<span className="font-medium text-kumo-default underline decoration-kumo-line decoration-2 underline-offset-4">
-									browse
-								</span>
-							</Trans>
-						)}
+				{busy ? (
+					<span aria-hidden="true">
+						<Loader size="sm" />
 					</span>
-				</Button>
+				) : (
+					<UploadSimple className="h-8 w-8 text-kumo-subtle" aria-hidden="true" />
+				)}
+				<span className="text-sm text-kumo-subtle">
+					{uploading
+						? t`Uploading image…`
+						: readingClipboard
+							? t`Reading clipboard…`
+							: t`Drop an image here`}
+				</span>
+				<div className="flex flex-wrap items-center justify-center gap-2">
+					<Button
+						type="button"
+						variant="secondary"
+						size="sm"
+						icon={<ImageIcon aria-hidden="true" />}
+						aria-label={t`Choose image for ${label}`}
+						disabled={busy}
+						{...buttonProps}
+						aria-describedby={[buttonProps?.["aria-describedby"], pasteHintId]
+							.filter(Boolean)
+							.join(" ")}
+						onClick={() => {
+							setError(null);
+							onSelect();
+						}}
+					>
+						<Trans>Choose image</Trans>
+					</Button>
+					<Button
+						type="button"
+						variant="secondary"
+						size="sm"
+						icon={<Clipboard aria-hidden="true" />}
+						disabled={busy}
+						aria-describedby={pasteHintId}
+						onClick={() => void pasteFromClipboard()}
+					>
+						<Trans>Paste</Trans>
+					</Button>
+				</div>
 			</div>
 			<p id={pasteHintId} className="text-xs leading-4 text-kumo-subtle">
-				<Trans>You can also paste an image when this control has focus.</Trans>
+				<Trans>Or focus this field and use your keyboard’s paste shortcut.</Trans>
 			</p>
 			<span role="status" className="sr-only">
-				{uploading ? t`Uploading image…` : ""}
+				{uploading ? t`Uploading image…` : readingClipboard ? t`Reading clipboard…` : ""}
 			</span>
 			{error && (
 				<p role="alert" className="text-xs leading-4 text-kumo-danger">
