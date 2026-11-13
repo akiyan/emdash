@@ -34,6 +34,7 @@ export function ImageDropTarget({
 	buttonProps,
 }: ImageDropTargetProps) {
 	const { t } = useLingui();
+	const pasteHintId = React.useId();
 	const queryClient = useQueryClient();
 	const [dragActive, setDragActive] = React.useState(false);
 	const [uploading, setUploading] = React.useState(false);
@@ -52,7 +53,7 @@ export function ImageDropTarget({
 	const upload = async (files: File[]) => {
 		if (activeUpload.current) return;
 		if (files.length !== 1) {
-			setError(t`Drop one image at a time.`);
+			setError(t`Upload one image at a time.`);
 			return;
 		}
 		const file = files[0]!;
@@ -99,6 +100,13 @@ export function ImageDropTarget({
 					dragActive && "border-kumo-brand bg-kumo-tint",
 				)}
 				aria-busy={uploading}
+				onPaste={(event) => {
+					const files = [...event.clipboardData.files];
+					if (!files.some((file) => file.type.startsWith("image/"))) return;
+					event.preventDefault();
+					event.stopPropagation();
+					void upload(files);
+				}}
 				onDragEnter={(event) => {
 					if (!event.dataTransfer.types.includes("Files") || activeUpload.current) return;
 					event.preventDefault();
@@ -130,6 +138,9 @@ export function ImageDropTarget({
 					aria-label={t`Drop an image here or browse for ${label}`}
 					disabled={uploading}
 					{...buttonProps}
+					aria-describedby={[buttonProps?.["aria-describedby"], pasteHintId]
+						.filter(Boolean)
+						.join(" ")}
 					onClick={() => {
 						setError(null);
 						onSelect();
@@ -156,6 +167,9 @@ export function ImageDropTarget({
 					</span>
 				</Button>
 			</div>
+			<p id={pasteHintId} className="text-xs leading-4 text-kumo-subtle">
+				<Trans>You can also paste an image when this control has focus.</Trans>
+			</p>
 			<span role="status" className="sr-only">
 				{uploading ? t`Uploading image…` : ""}
 			</span>

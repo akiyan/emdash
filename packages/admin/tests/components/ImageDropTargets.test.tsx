@@ -98,6 +98,15 @@ function dropFiles(element: Element, files: File[]) {
 	}
 }
 
+function pasteFiles(element: Element, files: File[], text?: string) {
+	const clipboardData = new DataTransfer();
+	for (const file of files) clipboardData.items.add(file);
+	if (text) clipboardData.setData("text/plain", text);
+	const event = new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true });
+	element.dispatchEvent(event);
+	return event;
+}
+
 function imageFile() {
 	return new File(["image bytes"], "upload.png", { type: "image/png" });
 }
@@ -155,9 +164,14 @@ describe("Editor image drop targets", () => {
 		await vi.waitFor(() => expect(getComputedStyle(target).borderTopColor).toBe(brand));
 	});
 
-	it.each(["featured", "og"] as const)(
-		"uploads one file into %s and ignores another drop while busy",
-		async (kind) => {
+	it.each([
+		{ kind: "featured", sendFiles: dropFiles },
+		{ kind: "og", sendFiles: dropFiles },
+		{ kind: "featured", sendFiles: pasteFiles },
+		{ kind: "og", sendFiles: pasteFiles },
+	] as const)(
+		"uploads one file into $kind with $sendFiles.name and ignores another upload while busy",
+		async ({ kind, sendFiles }) => {
 			let complete!: (item: LocalMediaItem) => void;
 			vi.mocked(uploadMedia).mockImplementation(
 				() =>
@@ -173,9 +187,9 @@ describe("Editor image drop targets", () => {
 						: "Drop an image here or browse for OG Image",
 				exact: true,
 			});
-			dropFiles(button.element(), [imageFile()]);
+			sendFiles(button.element(), [imageFile()]);
 			await expect.element(button).toBeDisabled();
-			dropFiles(button.element(), [imageFile()]);
+			sendFiles(button.element(), [imageFile()]);
 			expect(uploadMedia).toHaveBeenCalledTimes(1);
 			if (kind === "featured")
 				expect(vi.mocked(uploadMedia).mock.calls[0]?.[1]?.fieldId).toBe("featured-field");
@@ -233,7 +247,11 @@ describe("Editor image drop targets", () => {
 			allowed: undefined,
 			message: "Only image files can be uploaded here.",
 		},
-		{ files: [imageFile(), imageFile()], allowed: undefined, message: "Drop one image at a time." },
+		{
+			files: [imageFile(), imageFile()],
+			allowed: undefined,
+			message: "Upload one image at a time.",
+		},
 		{
 			files: [imageFile()],
 			allowed: ["image/jpeg"],
@@ -253,6 +271,61 @@ describe("Editor image drop targets", () => {
 		await expect.element(screen.getByRole("alert")).toHaveTextContent(message);
 		expect(uploadMedia).not.toHaveBeenCalled();
 		expect(screen.getByTestId("stored-value").element().textContent).toBe("null");
+	});
+
+	it.each([
+		{
+			files: [imageFile(), imageFile()],
+			allowed: undefined,
+			message: "Upload one image at a time.",
+		},
+		{
+			files: [imageFile()],
+			allowed: ["image/jpeg"],
+			message: "This field does not accept image/png files.",
+		},
+	])("rejects incompatible pastes: $message", async ({ files, allowed, message }) => {
+		const screen = await render(<Target kind="featured" allowedMimeTypes={allowed} />);
+		const button = screen.getByRole("button", {
+			name: "Drop an image here or browse for Featured image",
+			exact: true,
+		});
+		expect(pasteFiles(button.element(), files).defaultPrevented).toBe(true);
+		await expect.element(screen.getByRole("alert")).toHaveTextContent(message);
+		expect(uploadMedia).not.toHaveBeenCalled();
+	});
+
+	it("leaves text and non-image clipboard contents alone", async () => {
+		const screen = await render(<Target kind="featured" />);
+		const button = screen.getByRole("button", {
+			name: "Drop an image here or browse for Featured image",
+			exact: true,
+		});
+		button.element().focus();
+		expect(pasteFiles(document.activeElement!, [], "A title").defaultPrevented).toBe(false);
+		expect(
+			pasteFiles(button.element(), [new File(["text"], "note.txt", { type: "text/plain" })])
+				.defaultPrevented,
+		).toBe(false);
+		expect(uploadMedia).not.toHaveBeenCalled();
+		expect(screen.getByRole("alert").query()).toBeNull();
+	});
+
+	it("keeps pasted images out of ancestor paste handlers", async () => {
+		const onPaste = vi.fn();
+		const screen = await render(
+			<div onPaste={onPaste}>
+				<Target kind="featured" />
+			</div>,
+		);
+		const button = screen.getByRole("button", {
+			name: "Drop an image here or browse for Featured image",
+			exact: true,
+		});
+		button.element().focus();
+		expect(pasteFiles(document.activeElement!, [imageFile()]).defaultPrevented).toBe(true);
+		await vi.waitFor(() => expect(uploadMedia).toHaveBeenCalledOnce());
+		expect(onPaste).not.toHaveBeenCalled();
 	});
 
 	it("keeps the empty target usable after an upload fails", async () => {
